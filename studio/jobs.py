@@ -186,10 +186,13 @@ def _set(job, **kw):
 
 def _remap(path, folder: Path):
     """Paths saved before data moved into per-user folders (or on another machine): find the file by name."""
-    if path and not Path(path).exists():
-        cand = folder / Path(str(path).replace("\\", "/")).name
+    if path:
+        p = Path(str(path).replace("\\", "/"))
+        cand = folder / p.name
         if cand.exists():
-            return str(cand)
+            return str(cand.resolve())
+        if p.exists():
+            return str(p.resolve())
     return path
 
 
@@ -198,7 +201,7 @@ def _load_file(f: Path, uid: str):
         job = json.loads(f.read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001
         return
-    job.update(dir=str(f.parent), user=uid)
+    job.update(dir=str(f.parent.resolve()), user=uid)
     job.setdefault("kind", "video")
     job.setdefault("creator", None)
     if job.get("source_path"):
@@ -284,6 +287,7 @@ def create(source: dict, options: dict, enqueue=True, creator=None, kind="video"
         base = {**DEFAULTS, **{k: c[k] for k in ("max_clips", "min_len", "max_len", "style", "layout")}}
     else:
         d, base, creator = config.user_dir(ctx.uid()) / "jobs" / jid, dict(DEFAULTS), None
+    d = d.resolve()
     d.mkdir(parents=True)
     opts = {**base, **clean_options(options)}
     if opts["min_len"] >= opts["max_len"]:
@@ -362,12 +366,16 @@ def request_render(jid, cid, changes: dict):
 
 
 def render_one(job, clip, words):
-    d = Path(job["dir"])
+    d = Path(job["dir"]).resolve()
     clip["status"] = "rendering"
     save(job)
     try:
         off = clip.get("src_offset", 0.0)
         src = Path(clip["src"]) if clip.get("src") else Path(job["source_path"])
+        if not src.is_absolute():
+            src = (d / src.name) if (d / src.name).exists() else (config.ROOT / src).resolve()
+        else:
+            src = src.resolve()
         if not clip.get("src"):
             clip["end"] = min(clip["end"], job["duration"])
         local = dict(clip, start=clip["start"] - off, end=clip["end"] - off, hook=roman.to_roman(clip.get("hook") or ""))

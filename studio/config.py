@@ -96,7 +96,8 @@ def _move_folder(old: Path, new: Path) -> bool:
 
 def _data_folder():
     if env("PEAKCUT_DATA"):
-        return Path(env("PEAKCUT_DATA")), "env"
+        p = Path(env("PEAKCUT_DATA"))
+        return (p if p.is_absolute() else (ROOT / p).resolve()), "env"
     try:
         chosen = json.loads(STORAGE_FILE.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -104,6 +105,8 @@ def _data_folder():
     if not chosen.get("path"):
         return ROOT / "data", "default"
     new = Path(chosen["path"])
+    if not new.is_absolute():
+        new = (ROOT / new).resolve()
     try:
         new.mkdir(parents=True, exist_ok=True)
     except OSError:
